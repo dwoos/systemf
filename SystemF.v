@@ -615,3 +615,371 @@ Proof.
     eexists; intuition eauto.
     apply Bool.andb_true_iff. intuition.
 Qed.
+
+Fixpoint rename_all (t : term) (next : var) (vars : Map var) (tnext : tvar) (tvars : Map tvar) :=
+  match t with
+  | Var v => match lkup1 vars v with
+            | Some v' => Some (Var v')
+            | None => None
+            end
+  | TyApp t' ty => match (rename_all t' next vars tnext tvars, trename_all ty tnext tvars) with
+                  | (Some t'', Some ty') => Some (TyApp t'' ty')
+                  | _ => None
+                  end
+  | App t1 t2 => match (rename_all t1 next vars tnext tvars, rename_all t2 next vars tnext tvars) with
+                | (Some t1', Some t2') => Some (App t1' t2')
+                | _ => None
+                end
+  | Lam v ty t' => match (rename_all t' (S (var_to_nat next))
+                                    (update vars v next) tnext tvars,
+                         trename_all ty tnext tvars) with
+                  | (Some t'', Some ty') =>
+                    Some (Lam next ty' t'')
+                  | _ => None
+                  end
+  | Bam tv t' => match rename_all t' next vars (S (tvar_to_nat tnext))
+                                 (update tvars tv tnext) with
+                | Some t'' =>
+                  Some (Bam tnext t'')
+                | _ => None
+                end
+  | _ => Some t
+  end.
+
+
+Lemma rename_all_alpha_equiv'_l :
+  forall t next vars tnext tvars,
+    (forall v, free v t ->
+          exists v',
+            lkup1 vars v = Some v') ->
+    (forall tv, tfree_term tv t ->
+           exists tv',
+             lkup1 tvars tv = Some tv') ->
+    exists t',
+      rename_all t next vars tnext tvars = Some t' /\
+      alpha_equiv' t t' vars tvars = true.
+Proof.
+  induction t; intros; simpl in *; intuition.
+  - eexists; intuition eauto.
+  - specialize (H v). conclude_using constructor.
+    break_exists. repeat find_rewrite.
+    eexists; intuition eauto.
+    break_if; congruence.
+  - match goal with
+    | |- context [rename_all _ ?x ?y ?z ?w] =>
+      specialize (IHt x y z w)
+    end.
+    forward IHt.
+    { intros. 
+      apply H.
+      constructor; auto.
+    } concludes.
+    forward IHt.
+    { intros. 
+      apply H0.
+      constructor; auto.
+    } concludes.
+    break_exists.
+    intuition.
+    find_rewrite.
+    pose proof trename_all_alpha_equiv t0 tnext tvars.
+    forwards.
+    {
+      intros.
+      apply H0.
+      solve [constructor; auto].
+    }
+    concludes.
+    break_exists. intuition.
+    find_rewrite.
+    eexists; intuition eauto.
+    apply Bool.andb_true_iff. intuition.
+  - match goal with
+    | |- context [rename_all t1 ?x ?y ?z ?w] =>
+      specialize (IHt1 x y z w)
+    end.
+    intuition.
+    conclude_using ltac:(
+        intros;
+        apply H;
+        constructor; auto).
+    conclude_using ltac:(
+        intros;
+        apply H0;
+        constructor; auto).
+    match goal with
+    | |- context [rename_all t2 ?x ?y ?z ?w] =>
+      specialize (IHt2 x y z w)
+    end.
+    intuition.
+    conclude_using ltac:(
+        intros;
+        apply H;
+        constructor; auto).
+    conclude_using ltac:(
+        intros;
+        apply H0;
+        constructor; auto).
+    break_exists. intuition.
+    repeat find_rewrite.
+    eexists; intuition eauto.
+    apply Bool.andb_true_iff. intuition.
+  - match goal with
+    | |- context [rename_all _ ?x ?y ?z ?w] =>
+      specialize (IHt x y z w)
+    end.
+    forward IHt.
+    { intros.
+      destruct_lkup1_update; eauto.
+      apply H.
+      constructor; auto.
+    } concludes.
+    forward IHt.
+    { intros. 
+      apply H0.
+      solve [constructor; auto].
+    } concludes.
+    break_exists.
+    intuition.
+    find_rewrite.
+    pose proof trename_all_alpha_equiv t tnext tvars.
+    forwards.
+    {
+      intros.
+      apply H0.
+      solve [constructor; auto].
+    }
+    concludes.
+    break_exists. intuition.
+    find_rewrite.
+    eexists; intuition eauto.
+    apply Bool.andb_true_iff. intuition.
+  - match goal with
+    | |- context [rename_all _ ?x ?y ?z ?w] =>
+      specialize (IHt x y z w)
+    end.
+    forward IHt.
+    { intros.
+      apply H.
+      constructor; auto.
+    } concludes.
+    forward IHt.
+    { intros. 
+      destruct_lkup1_update; eauto.
+      apply H0.
+      solve [constructor; auto].
+    } concludes.
+    break_exists.
+    intuition.
+    find_rewrite.
+    eexists; intuition eauto.
+Qed.
+
+
+
+Lemma rename_all_alpha_equiv'_r :
+  forall t (next : nat) (vars : Map var) (tnext : nat) (tvars : Map tvar),
+    invertible vars ->
+    invertible tvars ->
+    (forall x, next <= x -> lkup2 vars x = None) ->
+    (forall x, tnext <= x -> lkup2 tvars x = None) ->
+    (forall v, free v t ->
+          exists v',
+            lkup1 vars v = Some v') ->
+    (forall tv, tfree_term tv t ->
+           exists tv',
+             lkup1 tvars tv = Some tv') ->
+    exists t',
+      rename_all t next vars tnext tvars = Some t' /\
+      alpha_equiv' t' t (inverse vars) (inverse tvars) = true.
+Proof.
+  induction t; intros; simpl in *; intuition.
+  - eexists; intuition eauto.
+  - specialize (H3 v). conclude_using constructor.
+    break_exists. repeat find_rewrite.
+    eexists; intuition eauto.
+    simpl.
+    rewrite <- lkup_inverse'.
+    unfold invertible in H.
+    erewrite H by eauto.
+    break_if; congruence.
+  - match goal with
+    | |- context [rename_all _ ?x ?y ?z ?w] =>
+      specialize (IHt next y tnext w)
+    end.
+    intuition.
+    forwards.
+    { intros. 
+      apply H3.
+      constructor; auto.
+    } concludes.
+    forward H6.
+    { intros. 
+      apply H4.
+      constructor; auto.
+    } concludes.
+    break_exists.
+    intuition.
+    find_rewrite.
+    pose proof trename_all_alpha_equiv' t0 tnext tvars.
+    intuition.
+    forwards.
+    {
+      intros.
+      apply H4.
+      solve [constructor; auto].
+    }
+    concludes.
+    break_exists. intuition.
+    find_rewrite.
+    eexists; intuition eauto.
+    apply Bool.andb_true_iff. intuition.
+  - match goal with
+    | |- context [rename_all t1 ?x ?y ?z ?w] =>
+      specialize (IHt1 next y tnext w)
+    end.
+    intuition.
+    conclude_using ltac:(
+        intros;
+        apply H3;
+        constructor; auto).
+    conclude_using ltac:(
+        intros;
+        apply H4;
+        constructor; auto).
+    match goal with
+    | |- context [rename_all t2 ?x ?y ?z ?w] =>
+      specialize (IHt2 next y tnext w)
+    end.
+    intuition.
+    conclude_using ltac:(
+        intros;
+        apply H3;
+        constructor; auto).
+    conclude_using ltac:(
+        intros;
+        apply H4;
+        constructor; auto).
+    break_exists. intuition.
+    repeat find_rewrite.
+    eexists; intuition eauto.
+    apply Bool.andb_true_iff. intuition.
+  - match goal with
+    | |- context [rename_all _ ?x ?y ?z ?w] =>
+      specialize (IHt (S next) y tnext w)
+    end.
+    conclude_using ltac:(eauto using invertible_update).
+    intuition.
+    forward H5.
+    {
+      intros.
+      assert (next <> x) by omega.
+      rewrite lkup2_update_neq; [apply H1; omega|].
+      intro. find_inversion. auto. } concludes.
+    conclude_using eauto.
+    forward H5.
+    { intros.
+      destruct_lkup1_update; eauto.
+      apply H3.
+      constructor; auto.
+    } concludes.
+    forward H5.
+    { intros. 
+      apply H4.
+      solve [constructor; auto].
+    } concludes.
+    break_exists.
+    intuition.
+    find_rewrite.
+    pose proof trename_all_alpha_equiv' t tnext tvars. intuition.
+    forwards.
+    {
+      intros.
+      apply H4.
+      solve [constructor; auto].
+    }
+    concludes.
+    break_exists. intuition.
+    find_rewrite.
+    eexists; intuition eauto. simpl.
+    apply Bool.andb_true_iff. intuition.
+  - match goal with
+    | |- context [rename_all _ ?x ?y ?z ?w] =>
+      specialize (IHt next y (S tnext) w)
+    end. intuition.
+    conclude_using ltac:(eauto using invertible_update).
+    intuition.
+    forward H6.
+    {
+      intros.
+      assert (tnext <> x) by omega.
+      rewrite lkup2_update_neq; [apply H2; omega|].
+      intro. find_inversion. auto. } concludes.
+    forward H6.
+    { intros.
+      apply H3.
+      constructor; auto.
+    } concludes.
+    forward H6.
+    { intros. 
+      destruct_lkup1_update; eauto.
+      apply H4.
+      solve [constructor; auto].
+    } concludes.
+    break_exists.
+    intuition.
+    find_rewrite.
+    eexists; intuition eauto.
+Qed.
+
+Lemma rename_all_alpha_equiv' :
+  forall t (next : nat) (vars : Map var) (tnext : nat) (tvars : Map tvar),
+    invertible vars ->
+    invertible tvars ->
+    (forall x, next <= x -> lkup2 vars x = None) ->
+    (forall x, tnext <= x -> lkup2 tvars x = None) ->
+    (forall v, free v t ->
+          exists v',
+            lkup1 vars v = Some v') ->
+    (forall tv, tfree_term tv t ->
+           exists tv',
+             lkup1 tvars tv = Some tv') ->
+    exists t',
+      rename_all t next vars tnext tvars = Some t' /\
+      alpha_equiv t t' vars tvars = true.
+Proof.
+  intros.
+  find_copy_eapply_lem_hyp rename_all_alpha_equiv'_l; eauto.
+  find_copy_eapply_lem_hyp rename_all_alpha_equiv'_r; eauto.
+  break_exists; intuition; repeat find_rewrite.
+  find_inversion.
+  eexists; intuition eauto.
+  unfold alpha_equiv.
+  apply Bool.andb_true_iff.
+  intuition.
+Qed.
+
+Lemma rename_all_alpha_equiv :
+  forall t (next : nat) (vars : Map var) (tnext : nat) (tvars : Map tvar),
+    closed t ->
+    exists t',
+      rename_all t 1 emptyv 1 emptytv = Some t' /\
+      alpha_equiv t t' emptyv emptytv = true.
+Proof.
+  intros. unfold emptyv, emptytv.
+  apply rename_all_alpha_equiv'.
+  - unfold invertible. intros.
+    rewrite lkup1_empty in *.
+    congruence.
+  -  unfold invertible. intros.
+    rewrite lkup1_empty in *.
+    congruence.
+  - intros.
+    rewrite lkup2_empty. auto.
+  - intros.
+    rewrite lkup2_empty. auto.
+  - intros.
+    exfalso; eapply closed_free; eauto.
+  - intros.
+    exfalso; eapply closed_tfree; eauto.
+Qed.
